@@ -1,11 +1,11 @@
 using Bot.Commands;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
-using Microsoft.Extensions.Configuration;
 
 namespace Bot;
 
@@ -13,11 +13,18 @@ public sealed class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
     private readonly ITelegramBotClient _bot;
-    private readonly IReadOnlyList<ITelegramCommand> _commands;
-    public Worker(ILogger<Worker> logger, IConfiguration config, IEnumerable<ITelegramCommand> commands)
+    private readonly IReadOnlyList<ITelegramCommand> _messageCommands;
+    private readonly IReadOnlyList<ITelegramCallbackCommand> _callbackCommands;
+
+    public Worker(
+        ILogger<Worker> logger,
+        IConfiguration config,
+        IEnumerable<ITelegramCommand> messageCommands,
+        IEnumerable<ITelegramCallbackCommand> callbackCommands)
     {
         _logger = logger;
-        _commands = commands.ToList();
+        _messageCommands = messageCommands.ToList();
+        _callbackCommands = callbackCommands.ToList();
 
         var token = config["Telegram:BotToken"];
         if (string.IsNullOrWhiteSpace(token))
@@ -25,24 +32,12 @@ public sealed class Worker : BackgroundService
 
         _bot = new TelegramBotClient(token);
     }
-    /*public Worker(ILogger<Worker> logger, IEnumerable<ITelegramCommand> commands)
-    {
-        _logger = logger;
-        _commands = commands.ToList();
-
-        var token = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
-        if (string.IsNullOrWhiteSpace(token))
-            throw new InvalidOperationException("Missing TELEGRAM_BOT_TOKEN environment variable.");
-
-        _bot = new TelegramBotClient(token);
-    }*///这个是将token放到launchSetting中了，不安全，不用它
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var me = await _bot.GetMe(stoppingToken);
         _logger.LogInformation("Telegram bot started: @{Username} (Id={Id})", me.Username, me.Id);
 
-        // 如果之前设置过 webhook，会导致 long polling 收不到更新；这里直接清掉
         await _bot.DeleteWebhook(dropPendingUpdates: true, cancellationToken: stoppingToken);
 
         var receiverOptions = new ReceiverOptions
@@ -57,25 +52,59 @@ public sealed class Worker : BackgroundService
 
     private async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, CancellationToken ct)
     {
-        if (update.Type != UpdateType.Message) return;
+        try
+        {
+            switch (update.Type)
+            {
+                case UpdateType.Message:
+                    if (update.Message is { } msg)
+                        await HandleMessageAsync(bot, msg, ct);
+                    break;
 
-        var message = update.Message;
-        if (message?.Text is null) return;
+                case UpdateType.CallbackQuery:
+                    if (update.CallbackQuery is { } cq)
+                        await HandleCallbackAsync(bot, cq, ct);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "HandleUpdateAsync failed (updateType={UpdateType})", update.Type);
+        }
+    }
 
-        var chatId = message.Chat.Id;
-        var text = message.Text;
+    private async Task HandleMessageAsync(ITelegramBotClient bot, Message message, CancellationToken ct)
+    {
+        if (message.Text is null) return;
 
-        _logger.LogInformation("Received: {Text} (chatId={ChatId})", text, chatId);
+        _logger.LogInformation("Received message: {Text} (chatId={ChatId})", message.Text, message.Chat.Id);
 
-        var cmd = _commands.FirstOrDefault(c => c.CanHandle(message));
+        var cmd = _messageCommands.FirstOrDefault(c => c.CanHandle(message));
         if (cmd is not null)
         {
             await cmd.HandleAsync(bot, message, ct);
             return;
         }
 
-        // 默认回显（后续可以改成“未知命令/提示help”）
-        await bot.SendMessage(chatId, "收到：" + text, cancellationToken: ct);
+        await bot.SendMessage(message.Chat.Id, "收到：" + message.Text, cancellationToken: ct);
+    }
+
+    private async Task HandleCallbackAsync(ITelegramBotClient bot, CallbackQuery callbackQuery, CancellationToken ct)
+    {
+        _logger.LogInformation("Received callback: {Data} (from={UserId})",
+            callbackQuery.Data,
+            callbackQuery.From.Id);
+
+        var cmd = _callbackCommands.FirstOrDefault(c => c.CanHandle(callbackQuery));
+        if (cmd is not null)
+        {
+            await cmd.HandleAsync(bot, callbackQuery, ct);
+            return;
+        }
+
+        // 没匹配到就先把 loading 状态???掉
+        if (callbackQuery.Id is not null)
+            await bot.AnswerCallbackQuery(callbackQuery.Id, cancellationToken: ct);
     }
 
     private Task HandleErrorAsync(ITelegramBotClient bot, Exception exception, CancellationToken ct)
