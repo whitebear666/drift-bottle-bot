@@ -41,14 +41,14 @@ public sealed class MenuCommand : ITelegramCommand
 
                 case BotMenus.Publish:
                     {
-                        var (bottleId, bottleNo) = await _service.PublishAsync(userId, ct);
+                        // M2: PublishAsync returns quota
+                        var (bottleId, bottleNo, quota) = await _service.PublishAsync(userId, ct);
 
-                        // inline button: delete this bottle
                         var markup = TelegramButtons.DeleteMyBottle(bottleId);
 
                         await bot.SendMessage(
                             chatId,
-                            $"已扔出一个瓶子：{bottleNo}",
+                            $"已扔出一个瓶子：{bottleNo}\n当前可捞次数：{quota}",
                             replyMarkup: markup,
                             cancellationToken: ct);
                         return;
@@ -56,13 +56,14 @@ public sealed class MenuCommand : ITelegramCommand
 
                 case BotMenus.Pickup:
                     {
+                        // M2: PickupAsync returns quota
                         var picked = await _service.PickupAsync(userId, ct);
 
                         var markup = TelegramButtons.PickedBottleActions(picked.bottleId);
 
                         await bot.SendMessage(
                             chatId,
-                            $"你捞到了瓶子 {picked.bottleNo}\n\n{picked.content}\n\n被捞取次数：{picked.pickupCount}",
+                            $"你捞到了瓶子 {picked.bottleNo}\n\n{picked.content}\n\n被捞取次数：{picked.pickupCount}\n当前可捞次数：{picked.pickupQuota}",
                             replyMarkup: markup,
                             cancellationToken: ct);
                         return;

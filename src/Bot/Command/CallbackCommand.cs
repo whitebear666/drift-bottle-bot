@@ -16,9 +16,12 @@ public sealed class CallbackCommand : ITelegramCallbackCommand
     }
 
     public bool CanHandle(CallbackQuery callbackQuery)
-        => callbackQuery.Data?.StartsWith("bottle.delete:", StringComparison.OrdinalIgnoreCase) == true
+        => callbackQuery.Data == "noop"
+        || callbackQuery.Data == "draft.publish"
+        || callbackQuery.Data?.StartsWith("bottle.delete:", StringComparison.OrdinalIgnoreCase) == true
         || callbackQuery.Data?.StartsWith("mybottles.page:", StringComparison.OrdinalIgnoreCase) == true
         || callbackQuery.Data?.StartsWith("mybottles.view:", StringComparison.OrdinalIgnoreCase) == true;
+
 
     public async Task HandleAsync(ITelegramBotClient bot, CallbackQuery callbackQuery, CancellationToken ct)
     {
@@ -28,6 +31,38 @@ public sealed class CallbackCommand : ITelegramCallbackCommand
 
         try
         {
+            if (data == "noop")
+            {
+                await bot.AnswerCallbackQuery(callbackQuery.Id, cancellationToken: ct);
+                return;
+            }
+            if (data == "draft.publish")
+            {
+                try
+                {
+                    // 这里调用 PublishAsync
+                    var (bottleId, bottleNo, quota) = await _service.PublishAsync(userId, ct);
+
+                    await bot.EditMessageReplyMarkup(chatId, callbackQuery.Message!.MessageId, replyMarkup: null, cancellationToken: ct);
+
+                    await bot.AnswerCallbackQuery(callbackQuery.Id, "已发布", cancellationToken: ct);
+
+                    await bot.SendMessage(
+                        chatId,
+                        $"已扔出一个瓶子：{bottleNo}\n当前可捞次数：{quota}",
+                        replyMarkup: TelegramButtons.DeleteMyBottle(bottleId),
+                        cancellationToken: ct);
+
+                    // 可选：把原提示消息的按钮去掉（避免重复点）
+                    await bot.EditMessageReplyMarkup(chatId, callbackQuery.Message!.MessageId, replyMarkup: null, cancellationToken: ct);
+                }
+                catch (Exception ex)
+                {
+                    await bot.AnswerCallbackQuery(callbackQuery.Id, ex.Message, cancellationToken: ct);
+                }
+
+                return;
+            }
             if (data.StartsWith("bottle.delete:", StringComparison.OrdinalIgnoreCase))
             {
                 var idStr = data["bottle.delete:".Length..];

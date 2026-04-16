@@ -35,7 +35,11 @@ public sealed class ComposeTextCommand : ITelegramCommand
         try
         {
             await _service.AppendDraftAsync(userId, message.Text!, ct);
-            await bot.SendMessage(chatId, "已添加到草稿。继续输入，或点击“结束编辑并发布瓶子”。", replyMarkup: BotMenus.MainMenu(), cancellationToken: ct);
+            await bot.SendMessage(
+                chatId,
+                "已添加到草稿。继续输入，或点击下方按钮“结束编辑并发布瓶子”。",
+                replyMarkup: TelegramButtons.PublishDraft(),
+                cancellationToken: ct);
         }
         catch (Exception ex)
         {
