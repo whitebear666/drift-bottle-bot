@@ -1,20 +1,38 @@
+using Application.Bottles;
+using Application.Bottles.Contracts;
+using Application.Common;
+using Application.Users.Contracts;
 using Bot;
 using Bot.Commands;
+using Infrastructure.Bottles;
+using Infrastructure.Users;
 using Microsoft.Extensions.Configuration;
+
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Worker 类型在 Bot 项目里，能定位到 UserSecretsId
 builder.Configuration.AddUserSecrets<Worker>(optional: true);
 
+// Application
+builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddSingleton<BottleService>();
+
+// Infrastructure (InMemory)
+builder.Services.AddSingleton<IBottleRepository, InMemoryBottleRepository>();
+builder.Services.AddSingleton<IPickupRepository, InMemoryPickupRepository>();
+builder.Services.AddSingleton<IUserStateRepository, InMemoryUserStateRepository>();
+
+// Bot hosted worker
 builder.Services.AddHostedService<Worker>();
 
 // message commands
 builder.Services.AddSingleton<ITelegramCommand, StartCommand>();
 builder.Services.AddSingleton<ITelegramCommand, HelpCommand>();
+builder.Services.AddSingleton<ITelegramCommand, MenuCommand>();
+builder.Services.AddSingleton<ITelegramCommand, ComposeTextCommand>();
 
-// callback commands（先预留，后续会添加实现）
-// builder.Services.AddSingleton<ITelegramCallbackCommand, XxxCallbackCommand>();
+// callback commands
+builder.Services.AddSingleton<ITelegramCallbackCommand, CallbackCommand>();
 
 var host = builder.Build();
 host.Run();

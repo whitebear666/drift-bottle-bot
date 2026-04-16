@@ -36,7 +36,8 @@ public sealed class BottleService
     public async Task AppendDraftAsync(long userId, string line, CancellationToken ct)
     {
         var s = await _users.GetAsync(userId, ct);
-        if (!s.IsComposing) return;
+        if (!s.IsComposing)
+            throw new InvalidOperationException("你还没有开始编辑瓶子。请先点击“开始发一个瓶子”。");
 
         var candidate = string.IsNullOrEmpty(s.Draft) ? line : (s.Draft + "\n" + line);
 
@@ -177,5 +178,18 @@ public sealed class BottleService
             buf[i] = chars[RandomNumberGenerator.GetInt32(chars.Length)];
 
         return new string(buf);
+
+    }
+    public async Task<(string bottleNo, string content, int pickupCount)> GetMyBottleDetailAsync(long userId, Guid bottleId, CancellationToken ct)
+    {
+        var b = await _bottles.GetByIdAsync(bottleId, ct);
+        if (b is null || b.IsDeleted)
+            throw new InvalidOperationException("瓶子不存在或已删除。");
+
+        if (b.AuthorUserId != userId)
+            throw new InvalidOperationException("你无权查看这个瓶子。");
+
+        var count = await _pickups.CountPickupsAsync(bottleId, ct);
+        return (b.BottleNo, b.Content, count);
     }
 }
