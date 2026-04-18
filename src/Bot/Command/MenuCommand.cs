@@ -1,4 +1,5 @@
 ﻿using Application.Bottles;
+using Application.Users.Contracts;
 using Bot.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -8,10 +9,12 @@ namespace Bot.Commands;
 public sealed class MenuCommand : ITelegramCommand
 {
     private readonly BottleService _service;
+    private readonly IUserStateRepository _userStates;
 
-    public MenuCommand(BottleService service)
+    public MenuCommand(BottleService service, IUserStateRepository userStates)
     {
         _service = service;
+        _userStates = userStates;
     }
 
     public bool CanHandle(Message message)
@@ -28,6 +31,18 @@ public sealed class MenuCommand : ITelegramCommand
 
         try
         {
+            // 如果正在编辑匿名回复，先拦截菜单操作，避免状态混乱
+            var state = await _userStates.GetAsync(userId, ct);
+            if (state.IsReplying)
+            {
+                await bot.SendMessage(
+                    chatId,
+                    "你正在编辑匿名回复：请先继续输入并点击“发送”，或点击“取消”。",
+                    replyMarkup: TelegramButtons.ReplySendCancel(),
+                    cancellationToken: ct);
+                return;
+            }
+
             switch (text)
             {
                 case BotMenus.StartCompose:
@@ -41,9 +56,7 @@ public sealed class MenuCommand : ITelegramCommand
 
                 case BotMenus.Publish:
                     {
-                        // M2: PublishAsync returns quota
                         var (bottleId, bottleNo, quota) = await _service.PublishAsync(userId, ct);
-
                         var markup = TelegramButtons.DeleteMyBottle(bottleId);
 
                         await bot.SendMessage(
@@ -56,9 +69,7 @@ public sealed class MenuCommand : ITelegramCommand
 
                 case BotMenus.Pickup:
                     {
-                        // M2: PickupAsync returns quota
                         var picked = await _service.PickupAsync(userId, ct);
-
                         var markup = TelegramButtons.PickedBottleActions(picked.bottleId);
 
                         await bot.SendMessage(

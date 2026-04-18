@@ -14,4 +14,8 @@ public sealed class UserState
 
     // quota (Rule B)
     public int PickupQuota { get; set; }
+    //约定：ReplyDraft 也限制 500 字，拼接规则和瓶子 Draft 类似。
+    public bool IsReplying { get; set; }
+    public Guid? ReplyThreadId { get; set; }
+    public string ReplyDraft { get; set; } = "";
 }

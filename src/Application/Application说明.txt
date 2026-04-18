@@ -1,0 +1,7 @@
+﻿相当于Service 层，
+- 放“用例”（Use Case）：ThrowBottle、PickupBottle、ListMyBottles…
+- 这里写业务流程：限流、黑名单、校验、调用仓储、产生领域事件等
+- 不关心 Telegram/HTTP，也不关心数据库具体怎么存（通过接口依赖）
+所以在这个里面有：
+1.BottleService，这个是整个漂流瓶的主要工作逻辑，将主启动项目Bot
+2.Contracts(合约)就是与repository的接口

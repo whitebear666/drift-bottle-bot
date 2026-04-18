@@ -6,23 +6,30 @@ public static class TelegramButtons
 {
     // callback data formats
     // bottle.delete:{bottleId}
+    // bottle.reply:{bottleId}
+    // thread.reply:{threadId}
+    // reply.send
+    // reply.cancel
     // mybottles.page:{page}
     // mybottles.view:{bottleId}
 
     public static InlineKeyboardMarkup DeleteMyBottle(Guid bottleId)
         => new(InlineKeyboardButton.WithCallbackData("删除我的瓶子", $"bottle.delete:{bottleId:D}"));
+
     public static InlineKeyboardMarkup PublishDraft()
-    => new(InlineKeyboardButton.WithCallbackData("结束编辑并发布瓶子", "draft.publish"));
+        => new(InlineKeyboardButton.WithCallbackData("结束编辑并发布瓶子", "draft.publish"));
+
+    public static InlineKeyboardButton Noop(string text)
+        => InlineKeyboardButton.WithCallbackData(text, "noop");
+
     public static InlineKeyboardMarkup PickedBottleActions(Guid bottleId)
         => new(new[]
         {
             new[] { InlineKeyboardButton.WithCallbackData("举报(未实现)", $"todo.report:{bottleId:D}") },
-            new[] { InlineKeyboardButton.WithCallbackData("回复(未实现)", $"todo.reply:{bottleId:D}") },
+            // 入口：只从捞到的瓶子进入
+            new[] { InlineKeyboardButton.WithCallbackData("回复", $"bottle.reply:{bottleId:D}") },
             new[] { InlineKeyboardButton.WithCallbackData("拉黑(未实现)", $"todo.block:{bottleId:D}") },
         });
-
-    public static InlineKeyboardButton Noop(string text)
-        => InlineKeyboardButton.WithCallbackData(text, "noop");
 
     public static InlineKeyboardMarkup MyBottlesPage(int page)
     {
@@ -55,4 +62,19 @@ public static class TelegramButtons
 
         return new InlineKeyboardMarkup(rows);
     }
+
+    // ===== M3.2：匿名对话 =====
+
+    public static InlineKeyboardMarkup ContinueThread(Guid threadId)
+        => new(InlineKeyboardButton.WithCallbackData("继续回复", $"thread.reply:{threadId:D}"));
+
+    public static InlineKeyboardMarkup ReplySendCancel()
+        => new(new[]
+        {
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("发送", "reply.send"),
+                InlineKeyboardButton.WithCallbackData("取消", "reply.cancel")
+            }
+        });
 }
