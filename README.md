@@ -1,2 +1,2 @@
 # drift-bottle-bot
-Telegram drifting bottle bot based on .NET 6
+Telegram drifting bottle bot based on .NET 8
