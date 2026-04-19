@@ -102,8 +102,46 @@ public sealed class ConversationService
         await _userStates.SaveAsync(state, ct);
     }
 
-    public async Task<(long ToUserId, string BottleNo, string Content, Guid ThreadId)> SendAsync(long userId, CancellationToken ct)
+    // ===== M3.3：发送匿名回复（两阶段：Peek + Commit）=====
+    // 背景：
+    // - 之前的 SendAsync 是“一步到位”：会写入消息、touch thread、并清空草稿退出回复模式。
+    // - 但现在我们需要在 bot 层做“对方是否屏蔽本会话”的检查。
+    // - 如果先 SendAsync 再检查，可能出现：消息没发出去但草稿被清空（体验差）。
+    //
+    // 解决：
+    // 1) PeekSendAsync：只读取当前将要发送的数据（不写库、不清草稿）
+    // 2) CommitSendAsync：真正写入消息并清空草稿退��回复模式
+    // 3) SendAsync：为了兼容旧调用点，保留为“直接 Commit”（或以后可改成 Peek+Commit）
+    public async Task<(long ToUserId, string BottleNo, string Content, Guid ThreadId)> PeekSendAsync(long userId, CancellationToken ct)
     {
+        var state = await _userStates.GetAsync(userId, ct);
+        if (!state.IsReplying || state.ReplyThreadId is null)
+            throw new InvalidOperationException("你当前不在回复模式。");
+
+        var content = (state.ReplyDraft ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(content))
+            throw new InvalidOperationException("回复内容不能为空。");
+
+        var thread = await _threads.GetByIdAsync(state.ReplyThreadId.Value, ct);
+        if (thread is null)
+            throw new InvalidOperationException("会话不存在或已失效。");
+
+        if (thread.AuthorUserId != userId && thread.PickerUserId != userId)
+            throw new InvalidOperationException("你无权参与这个会话。");
+
+        var toUserId = thread.AuthorUserId == userId ? thread.PickerUserId : thread.AuthorUserId;
+
+        var bottle = await _bottles.GetByIdAsync(thread.BottleId, ct);
+        var bottleNo = bottle?.BottleNo ?? "未知编号";
+
+        // 注意：这里不做任何写入，不 touch thread，不清空草稿。
+        return (toUserId, bottleNo, content, thread.Id);
+    }
+
+    public async Task<(long ToUserId, string BottleNo, string Content, Guid ThreadId)> CommitSendAsync(long userId, CancellationToken ct)
+    {
+        // Commit 阶段再次读取一遍 state/thread/content，确保使用“提交时刻”的草稿内容。
+        // （避免 Peek 后用户又追加了内容，造成发送内容不一致；同时也标准化接口，不传 expectedContent。）
         var state = await _userStates.GetAsync(userId, ct);
         if (!state.IsReplying || state.ReplyThreadId is null)
             throw new InvalidOperationException("你当前不在回复模式。");
@@ -135,10 +173,11 @@ public sealed class ConversationService
             CreatedAtUtc = now
         };
 
+        // 1) 落库消息 + touch thread
         await _messages.AddAsync(msg, ct);
         await _threads.TouchAsync(thread.Id, now, ct);
 
-        // 退出回复模式
+        // 2) 退出回复模式（清空草稿）
         state.IsReplying = false;
         state.ReplyThreadId = null;
         state.ReplyDraft = "";
@@ -146,4 +185,8 @@ public sealed class ConversationService
 
         return (toUserId, bottleNo, content, thread.Id);
     }
+
+    // 兼容旧调用点：保留 SendAsync，但现在语义是“直接提交发送”
+    public async Task<(long ToUserId, string BottleNo, string Content, Guid ThreadId)> SendAsync(long userId, CancellationToken ct)
+        => await CommitSendAsync(userId, ct);
 }

@@ -18,4 +18,7 @@ public sealed class UserState
     public bool IsReplying { get; set; }
     public Guid? ReplyThreadId { get; set; }
     public string ReplyDraft { get; set; } = "";
+
+    //这个是拉黑后的操作，严格来说是将只拉黑“这一条会话 thread”（同一个人换新 thread 还能发）
+    public HashSet<Guid> BlockedThreadIds { get; set; } = new();
 }
