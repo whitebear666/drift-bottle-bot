@@ -110,7 +110,7 @@ public sealed class ConversationService
     //
     // 解决：
     // 1) PeekSendAsync：只读取当前将要发送的数据（不写库、不清草稿）
-    // 2) CommitSendAsync：真正写入消息并清空草稿退��回复模式
+    // 2) CommitSendAsync：真正写入消息并清空草稿退出回复模式
     // 3) SendAsync：为了兼容旧调用点，保留为“直接 Commit”（或以后可改成 Peek+Commit）
     public async Task<(long ToUserId, string BottleNo, string Content, Guid ThreadId)> PeekSendAsync(long userId, CancellationToken ct)
     {

@@ -79,7 +79,7 @@ public sealed class CallbackCommand : ITelegramCallbackCommand
                 await bot.AnswerCallbackQuery(callbackQuery.Id, "该功能尚未实现。", cancellationToken: ct);
                 return;
             }
-            // ===== 这个是回复时的举报拉黑 26.4.19todo ======
+            // ===== 这个是回复时的举报拉黑 26.4.19已完成 ======
             if (data.StartsWith("todo.report.thread:", StringComparison.OrdinalIgnoreCase)
                 || data.StartsWith("todo.block.thread:", StringComparison.OrdinalIgnoreCase))
             {
