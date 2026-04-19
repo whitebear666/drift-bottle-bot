@@ -70,14 +70,14 @@ public static class TelegramButtons
     public static InlineKeyboardMarkup IncomingAnonymousMessage(Guid threadId)
         => new(new[]
         {
-        new[] { InlineKeyboardButton.WithCallbackData("继续回复", $"thread.reply:{threadId:D}") },
-        new[]
-        {
-            InlineKeyboardButton.WithCallbackData("举报（TODO）", $"todo.report.thread:{threadId:D}"),
+            new[] { InlineKeyboardButton.WithCallbackData("继续回复", $"thread.reply:{threadId:D}") },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("举报（TODO）", $"todo.report.thread:{threadId:D}"),
 
-            // 先走确认流程，拉黑需要二次确认：先进入确认面板，不直接执行
-            InlineKeyboardButton.WithCallbackData("拉黑", $"thread.block.confirm:{threadId:D}")
-        }
+                // 先走确认流程，拉黑需要二次确认：先进入确认面板，不直接执行
+                InlineKeyboardButton.WithCallbackData("拉黑", $"thread.block.confirm:{threadId:D}")
+            }
         });
 
     // 拉黑确认面板：
@@ -87,9 +87,9 @@ public static class TelegramButtons
     public static InlineKeyboardMarkup ConfirmBlock(Guid threadId)
         => new(new[]
         {
-        new[] { InlineKeyboardButton.WithCallbackData("同意，我已想好（拉黑本会话）", $"thread.block:{threadId:D}") },
-        new[] { InlineKeyboardButton.WithCallbackData("永久拉黑此人（TODO）", $"user.block.permanent.confirm:{threadId:D}") },
-        new[] { InlineKeyboardButton.WithCallbackData("取消，我再想想", "noop") }
+            new[] { InlineKeyboardButton.WithCallbackData("同意，我已想好（拉黑本会话）", $"thread.block:{threadId:D}") },
+            new[] { InlineKeyboardButton.WithCallbackData("永久拉黑此人（TODO）", $"user.block.permanent.confirm:{threadId:D}") },
+            new[] { InlineKeyboardButton.WithCallbackData("取消，我再想想", "noop") }
         });
 
     public static InlineKeyboardMarkup ReplySendCancel()
