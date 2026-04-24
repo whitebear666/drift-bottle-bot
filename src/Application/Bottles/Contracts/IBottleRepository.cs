@@ -5,6 +5,7 @@ namespace Application.Bottles.Contracts;
 public interface IBottleRepository
 {
     Task<bool> BottleNoExistsAsync(string bottleNo, CancellationToken ct);
+
     Task AddAsync(Bottle bottle, CancellationToken ct);
 
     Task<Bottle?> GetByIdAsync(Guid bottleId, CancellationToken ct);
@@ -17,4 +18,6 @@ public interface IBottleRepository
     Task<IReadOnlyList<Bottle>> ListEligibleForPickupAsync(DateTimeOffset nowUtc, DateTimeOffset expireBeforeUtc, CancellationToken ct);
     //Task DeleteAllByAuthorAsync(long authorUserId, DateTimeOffset now, CancellationToken ct);
     Task<int> DeleteAllByAuthorAsync(long authorUserId, DateTimeOffset deletedAtUtc, CancellationToken ct);
+    //90天自动删除 接到src/Infrastructure/Bottles/InMemoryBottleRepository.cs
+    Task<int> DeleteExpiredAsync(DateTimeOffset expireBeforeUtc, DateTimeOffset deletedAtUtc, CancellationToken ct);
 }

@@ -83,5 +83,23 @@ public sealed class InMemoryBottleRepository : IBottleRepository
 
         return Task.FromResult(count);
     }
+    //90天后瓶子自动删除
+    public Task<int> DeleteExpiredAsync(DateTimeOffset expireBeforeUtc, DateTimeOffset deletedAtUtc, CancellationToken ct)
+    {
+        var count = 0;
 
+        foreach (var b in _byId.Values)
+        {
+            if (b.IsDeleted) continue;
+
+            // CreatedAt < expireBeforeUtc => 过期
+            if (b.CreatedAt >= expireBeforeUtc) continue;
+
+            b.IsDeleted = true;
+            b.DeletedAt = deletedAtUtc;
+            count++;
+        }
+
+        return Task.FromResult(count);
+    }
 }

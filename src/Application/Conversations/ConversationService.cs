@@ -36,6 +36,7 @@ public sealed class ConversationService
         _messages = messages;
         _bans = bans;
     }
+
     //封禁检查
     private async Task EnsureNotBannedAsync(long userId, CancellationToken ct)
     {

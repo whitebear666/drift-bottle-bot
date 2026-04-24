@@ -13,6 +13,7 @@ using Application.Conversations;
 using Application.Risk;
 using Application.Risk.Contracts;
 using Infrastructure.Risk;
+using Bot.Moderation;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -43,9 +44,13 @@ builder.Services.AddSingleton<ITelegramCommand, StartCommand>();
 builder.Services.AddSingleton<ITelegramCommand, HelpCommand>();
 builder.Services.AddSingleton<ITelegramCommand, MenuCommand>();
 builder.Services.AddSingleton<ITelegramCommand, ComposeTextCommand>();
+builder.Services.AddSingleton<ITelegramCommand, AdminCommand>();//管理员看瓶子内容
 
 // callback commands
 builder.Services.AddSingleton<ITelegramCallbackCommand, CallbackCommand>();
+
+//AdminCommand 
+builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection("Moderation"));
 
 var host = builder.Build();
 host.Run();

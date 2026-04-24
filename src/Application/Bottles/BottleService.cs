@@ -5,6 +5,7 @@ using Application.Users.Contracts;
 using Domain.Bottles;
 using System.Security.Cryptography;
 
+
 namespace Application.Bottles;
 
 public sealed class BottleService
@@ -20,6 +21,7 @@ public sealed class BottleService
     private readonly IUserBlockRepository _blocks;
     private readonly IBanRepository _bans;
 
+
     public BottleService(IClock clock, IBottleRepository bottles, IPickupRepository pickups, IUserStateRepository users,IUserBlockRepository blocks,IBanRepository bans)
     {
         _clock = clock;
@@ -28,6 +30,7 @@ public sealed class BottleService
         _users = users;
         _blocks = blocks;
         _bans = bans;
+
     }
 
     public async Task StartComposeAsync(long userId, CancellationToken ct)
@@ -52,9 +55,11 @@ public sealed class BottleService
         s.Draft = candidate;
         await _users.SaveAsync(s, ct);
     }
-
+    //发布瓶子
     public async Task<(Guid bottleId, string bottleNo, int pickupQuota)> PublishAsync(long userId, CancellationToken ct)
     {
+        //先做封禁拦截
+        await EnsureNotBannedAsync(userId, ct);
         //当前时间
         var now = _clock.UtcNow;
 
@@ -114,9 +119,11 @@ public sealed class BottleService
         var now = _clock.UtcNow;
         return await _bottles.DeleteByIdAsync(bottleId, userId, now, ct);
     }
-
+    //捞取瓶子
     public async Task<(Guid bottleId, string bottleNo, string content, int pickupCount, int pickupQuota)> PickupAsync(long userId, CancellationToken ct)
     {
+        //捞前封禁拦截
+        await EnsureNotBannedAsync(userId, ct);
         var now = _clock.UtcNow;
         var s = await _users.GetAsync(userId, ct);
         //捞前封禁检查
@@ -137,6 +144,9 @@ public sealed class BottleService
 
         var expireBefore = now - ExpireAfter;
 
+        // 访问时清理：把过期瓶子标记为 deleted（满足“90 天自动删除”）
+        await _bottles.DeleteExpiredAsync(expireBeforeUtc: expireBefore, deletedAtUtc: now, ct);
+
         var candidates = await _bottles.ListEligibleForPickupAsync(now, expireBefore, ct);
 
         // filter: not self, not already picked
@@ -147,6 +157,7 @@ public sealed class BottleService
             if (await _pickups.HasPickedAsync(userId, b.Id, ct)) continue;
             eligible.Add(b);
             if (await _blocks.IsBlockedAsync(userId, b.AuthorUserId, ct)) continue;//候选过滤里加拉黑过滤
+
         }
 
         if (eligible.Count == 0)
@@ -216,5 +227,14 @@ public sealed class BottleService
 
         var count = await _pickups.CountPickupsAsync(bottleId, ct);
         return (b.BottleNo, b.Content, count);
+    }
+
+    //封禁检查
+    private async Task EnsureNotBannedAsync(long userId, CancellationToken ct)
+    {
+        var now = _clock.UtcNow;
+        var until = await _bans.GetBannedUntilAsync(userId, ct);
+        if (until is { } u && u > now)
+            throw new InvalidOperationException($"你已被封禁，解封时间：{u:yyyy-MM-dd HH:mm} UTC");
     }
 }
