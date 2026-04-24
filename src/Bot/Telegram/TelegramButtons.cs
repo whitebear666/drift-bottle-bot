@@ -5,11 +5,21 @@ namespace Bot.Telegram;
 public static class TelegramButtons
 {
     // callback data formats
+    //
     // bottle.delete:{bottleId}
     // bottle.reply:{bottleId}
+    // bottle.report.todo:{bottleId}         // TODO：举报瓶子
+    // bottle.block.todo:{bottleId}          // TODO：拉黑/屏蔽瓶子（语义后续定）
+    //
     // thread.reply:{threadId}
+    // thread.report.todo:{threadId}         // TODO：举报会话
+    // thread.block.confirm:{threadId}       // 拉黑二次确认（thread 级）
+    // thread.block:{threadId}               // 执行拉黑本会话（thread 级）
+    // user.block.permanent.confirm:{threadId} // TODO：永久拉黑（将来建议改成 userId）
+    //
     // reply.send
     // reply.cancel
+    //
     // mybottles.page:{page}
     // mybottles.view:{bottleId}
 
@@ -26,10 +36,13 @@ public static class TelegramButtons
     public static InlineKeyboardMarkup PickedBottleActions(Guid bottleId)
         => new(new[]
         {
-            new[] { InlineKeyboardButton.WithCallbackData("举报(未实现)", $"todo.report:{bottleId:D}") },
+            //new[] { InlineKeyboardButton.WithCallbackData("举报(未实现)", $"bottle.report.todo:{bottleId:D}") },
+            //上面是未实现，下面是已实现，拉黑同理哦
+            new[] { InlineKeyboardButton.WithCallbackData("举报(未实现)", $"bottle.report:{bottleId:D}") },
             // 入口：只从捞到的瓶子进入
             new[] { InlineKeyboardButton.WithCallbackData("回复", $"bottle.reply:{bottleId:D}") },
-            new[] { InlineKeyboardButton.WithCallbackData("拉黑(未实现)", $"todo.block:{bottleId:D}") },
+            //new[] { InlineKeyboardButton.WithCallbackData("拉黑(未实现)", $"bottle.block.todo:{bottleId:D}") },
+            new[] { InlineKeyboardButton.WithCallbackData("拉黑(未实现)", $"bottle.block:{bottleId:D}") },
         });
 
     public static InlineKeyboardMarkup MyBottlesPage(int page)
@@ -73,7 +86,7 @@ public static class TelegramButtons
             new[] { InlineKeyboardButton.WithCallbackData("继续回复", $"thread.reply:{threadId:D}") },
             new[]
             {
-                InlineKeyboardButton.WithCallbackData("举报（TODO）", $"todo.report.thread:{threadId:D}"),
+                InlineKeyboardButton.WithCallbackData("举报（TODO）", $"thread.report.todo:{threadId:D}"),
 
                 // 先走确认流程，拉黑需要二次确认：先进入确认面板，不直接执行
                 InlineKeyboardButton.WithCallbackData("拉黑", $"thread.block.confirm:{threadId:D}")

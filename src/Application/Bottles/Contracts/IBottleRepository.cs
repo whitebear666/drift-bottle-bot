@@ -15,4 +15,6 @@ public interface IBottleRepository
     Task<bool> DeleteByIdAsync(Guid bottleId, long authorUserId, DateTimeOffset deletedAtUtc, CancellationToken ct);
 
     Task<IReadOnlyList<Bottle>> ListEligibleForPickupAsync(DateTimeOffset nowUtc, DateTimeOffset expireBeforeUtc, CancellationToken ct);
+    //Task DeleteAllByAuthorAsync(long authorUserId, DateTimeOffset now, CancellationToken ct);
+    Task<int> DeleteAllByAuthorAsync(long authorUserId, DateTimeOffset deletedAtUtc, CancellationToken ct);
 }

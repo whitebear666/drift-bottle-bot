@@ -1,5 +1,6 @@
 ﻿using Application.Bottles.Contracts;
 using Application.Common;
+using Application.Risk.Contracts;
 using Application.Users.Contracts;
 using Domain.Bottles;
 using System.Security.Cryptography;
@@ -16,13 +17,17 @@ public sealed class BottleService
     private readonly IBottleRepository _bottles;
     private readonly IPickupRepository _pickups;
     private readonly IUserStateRepository _users;
+    private readonly IUserBlockRepository _blocks;
+    private readonly IBanRepository _bans;
 
-    public BottleService(IClock clock, IBottleRepository bottles, IPickupRepository pickups, IUserStateRepository users)
+    public BottleService(IClock clock, IBottleRepository bottles, IPickupRepository pickups, IUserStateRepository users,IUserBlockRepository blocks,IBanRepository bans)
     {
         _clock = clock;
         _bottles = bottles;
         _pickups = pickups;
         _users = users;
+        _blocks = blocks;
+        _bans = bans;
     }
 
     public async Task StartComposeAsync(long userId, CancellationToken ct)
@@ -50,10 +55,14 @@ public sealed class BottleService
 
     public async Task<(Guid bottleId, string bottleNo, int pickupQuota)> PublishAsync(long userId, CancellationToken ct)
     {
+        //当前时间
         var now = _clock.UtcNow;
 
         var s = await _users.GetAsync(userId, ct);
-
+        //发布前封禁检查
+        var bannedUntil = await _bans.GetBannedUntilAsync(userId, ct);
+        if (bannedUntil is { } u && u > now)
+            throw new InvalidOperationException($"你已被封禁，解封时间：{u:yyyy-MM-dd HH:mm} UTC");
         if (!s.IsComposing)
             throw new InvalidOperationException("你还没有开始编辑瓶子。请先点击“开始发一个瓶子”。");
 
@@ -110,7 +119,10 @@ public sealed class BottleService
     {
         var now = _clock.UtcNow;
         var s = await _users.GetAsync(userId, ct);
-
+        //捞前封禁检查
+        var bannedUntil = await _bans.GetBannedUntilAsync(userId, ct);
+        if (bannedUntil is { } u && u > now)
+            throw new InvalidOperationException($"你已被封禁，解封时间：{u:yyyy-MM-dd HH:mm} UTC");
         /*if (s.LastPickupAtUtc is { } last && now - last < Cooldown)
             throw new InvalidOperationException("捞瓶子太频繁了，请 1 分钟后再试。");*/
         if (s.LastPickupAtUtc is { } last)
@@ -134,6 +146,7 @@ public sealed class BottleService
             if (b.AuthorUserId == userId) continue;
             if (await _pickups.HasPickedAsync(userId, b.Id, ct)) continue;
             eligible.Add(b);
+            if (await _blocks.IsBlockedAsync(userId, b.AuthorUserId, ct)) continue;//候选过滤里加拉黑过滤
         }
 
         if (eligible.Count == 0)

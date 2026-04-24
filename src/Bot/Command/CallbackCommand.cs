@@ -1,9 +1,11 @@
 ﻿using Application.Bottles;
 using Application.Conversations;
+using Application.Risk;
 using Application.Users.Contracts;
 using Bot.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Types;
+
 
 namespace Bot.Commands;
 
@@ -13,12 +15,15 @@ public sealed class CallbackCommand : ITelegramCallbackCommand
     private readonly ConversationService _conversations;
     private const int PageSize = 5;
     private readonly IUserStateRepository _userStates;
+    private readonly ModerationService _moderation;
 
-    public CallbackCommand(BottleService service, ConversationService conversations, IUserStateRepository userStates)
+
+    public CallbackCommand(BottleService service,ConversationService conversations,IUserStateRepository userStates,ModerationService moderation)
     {
         _service = service;
         _conversations = conversations;
         _userStates = userStates;
+        _moderation = moderation;
     }
 
     public bool CanHandle(CallbackQuery callbackQuery)
@@ -28,6 +33,11 @@ public sealed class CallbackCommand : ITelegramCallbackCommand
         || callbackQuery.Data == "reply.cancel"
         || callbackQuery.Data?.StartsWith("todo.report:", StringComparison.OrdinalIgnoreCase) == true
         || callbackQuery.Data?.StartsWith("todo.block:", StringComparison.OrdinalIgnoreCase) == true
+        || callbackQuery.Data?.StartsWith("bottle.report.todo:", StringComparison.OrdinalIgnoreCase) == true
+        || callbackQuery.Data?.StartsWith("bottle.block.todo:", StringComparison.OrdinalIgnoreCase) == true
+        || callbackQuery.Data?.StartsWith("bottle.report:", StringComparison.OrdinalIgnoreCase) == true
+        || callbackQuery.Data?.StartsWith("bottle.block:", StringComparison.OrdinalIgnoreCase) == true
+        || callbackQuery.Data?.StartsWith("thread.report.todo:", StringComparison.OrdinalIgnoreCase) == true
         || callbackQuery.Data?.StartsWith("todo.report.thread:", StringComparison.OrdinalIgnoreCase) == true
         || callbackQuery.Data?.StartsWith("todo.block.thread:", StringComparison.OrdinalIgnoreCase) == true
         || callbackQuery.Data?.StartsWith("thread.block.confirm:", StringComparison.OrdinalIgnoreCase) == true
@@ -45,9 +55,10 @@ public sealed class CallbackCommand : ITelegramCallbackCommand
         var userId = callbackQuery.From.Id;
         var chatId = callbackQuery.Message!.Chat.Id;
 
+
         try
         {
-            // ===== 通用 noop =====
+            // ===== 通用 noop(无操作) =====
             if (data == "noop")
             {
                 await bot.AnswerCallbackQuery(callbackQuery.Id, cancellationToken: ct);
@@ -73,17 +84,39 @@ public sealed class CallbackCommand : ITelegramCallbackCommand
                 return;
             }
             // ===== M3未实现：举报/拉黑 这个是捞到时的举报拉黑 26.4.19todo =====
-            if (data.StartsWith("todo.report:", StringComparison.OrdinalIgnoreCase)
-                || data.StartsWith("todo.block:", StringComparison.OrdinalIgnoreCase))
+
+            // 新入口（推荐）：bottle.report.todo / bottle.block.todo
+            if (data.StartsWith("bottle.report.todo:", StringComparison.OrdinalIgnoreCase)
+                || data.StartsWith("bottle.block.todo:", StringComparison.OrdinalIgnoreCase))
             {
                 await bot.AnswerCallbackQuery(callbackQuery.Id, "该功能尚未实现。", cancellationToken: ct);
                 return;
             }
-            // ===== 这个是回复时的举报拉黑 26.4.19已完成 ======
-            if (data.StartsWith("todo.report.thread:", StringComparison.OrdinalIgnoreCase)
-                || data.StartsWith("todo.block.thread:", StringComparison.OrdinalIgnoreCase))
+
+            // 旧入口：todo.report / todo.block（兼容历史消息按钮）
+            // 说明：早期版本使用 todo.report:{bottleId} / todo.block:{bottleId}
+            // 现在已更名为 bottle.report.todo / bottle.block.todo，避免和 thread/user 的 todo 回调混淆。
+            if (data.StartsWith("todo.report:", StringComparison.OrdinalIgnoreCase)
+                || data.StartsWith("todo.block:", StringComparison.OrdinalIgnoreCase))
+            {
+                await bot.AnswerCallbackQuery(callbackQuery.Id, "该入口已升级（仍未实现），请以最新按钮为准。", cancellationToken: ct);
+                return;
+            }
+            // ===== 这个是回复时的举报拉黑 26.4.19todo ======
+
+            // 1) 举报 thread：仍未实现
+            if (data.StartsWith("todo.report.thread:", StringComparison.OrdinalIgnoreCase))
             {
                 await bot.AnswerCallbackQuery(callbackQuery.Id, "该功能尚未实现。", cancellationToken: ct);
+                return;
+            }
+
+            // 2) 旧的“拉黑 thread”入口：兼容历史消息按钮（已升级）
+            // 说明：旧按钮 callback 是 todo.block.thread:{threadId}，新流程是 thread.block.confirm:{threadId} -> thread.block:{threadId}
+            // 为了避免用户点击旧消息按钮看到“未实现”而困惑，这里给出明确提示。
+            if (data.StartsWith("todo.block.thread:", StringComparison.OrdinalIgnoreCase))
+            {
+                await bot.AnswerCallbackQuery(callbackQuery.Id, "该入口已升级，请使用消息里的“拉黑”按钮重新操作。", cancellationToken: ct);
                 return;
             }
             // ===== M3.3：拉黑二次确认（thread 级）=====
@@ -255,6 +288,74 @@ public sealed class CallbackCommand : ITelegramCallbackCommand
 
                 return;
             }
+
+            //M4.1 举报的实现
+
+            if (data.StartsWith("bottle.report:", StringComparison.OrdinalIgnoreCase))
+            {
+                var idStr = data["bottle.report:".Length..];
+                if (!Guid.TryParse(idStr, out var bottleId))
+                    throw new InvalidOperationException("无效的瓶子编号。");
+
+                var (added, cnt, banned) = await _moderation.ReportBottleAsync(userId, bottleId, ct);
+
+                await bot.AnswerCallbackQuery(
+                    callbackQuery.Id,
+                    added ? "已举报" : "你已举报过该作者（不重复计数）",
+                    cancellationToken: ct);
+
+                if (banned)
+                {
+                    await bot.SendMessage(
+                        chatId,
+                        $"举报已记录。该作者被不同用户举报人数：{cnt}（已达到封禁阈值，已封禁 14 天）",
+                        replyMarkup: BotMenus.MainMenu(),
+                        cancellationToken: ct);
+                }
+                else
+                {
+                    await bot.SendMessage(
+                        chatId,
+                        $"举报已记录。该作者被不同用户举报人数：{cnt}/6",
+                        replyMarkup: BotMenus.MainMenu(),
+                        cancellationToken: ct);
+                }
+
+                return;
+            }
+
+            //M4.1 拉黑作者
+
+            if (data.StartsWith("bottle.block:", StringComparison.OrdinalIgnoreCase))
+            {
+                var idStr = data["bottle.block:".Length..];
+                if (!Guid.TryParse(idStr, out var bottleId))
+                    throw new InvalidOperationException("无效的瓶子编号。");
+
+                var (added, cnt, purged, banned) = await _moderation.BlockBottleAuthorAsync(userId, bottleId, ct);
+
+                await bot.AnswerCallbackQuery(
+                    callbackQuery.Id,
+                    added ? "已拉黑作者" : "你已拉黑过该作者（不重复计数）",
+                    cancellationToken: ct);
+
+                var msg = $"已拉黑作者。该作者被不同用户拉黑人数：{cnt}/10";
+
+                if (purged)
+                    msg += "\n\n处罚触发：该作者所有瓶子已被清除。";
+                if (banned)
+                    msg += "\n处罚触发：该作者已封禁 14 天。";//标准的事件写法，订阅委托的结果
+
+                await bot.SendMessage(chatId, msg, replyMarkup: BotMenus.MainMenu(), cancellationToken: ct);
+                return;
+            }
+
+
+
+
+
+
+
 
             // ===== 你原来的逻辑：bottle.delete =====
             if (data.StartsWith("bottle.delete:", StringComparison.OrdinalIgnoreCase))

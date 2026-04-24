@@ -3,6 +3,7 @@ using Application.Common;
 using Application.Conversations.Contracts;
 using Application.Users.Contracts;
 using Domain.Conversations;
+using Application.Risk.Contracts;
 
 namespace Application.Conversations;
 
@@ -16,6 +17,7 @@ public sealed class ConversationService
     private readonly IUserStateRepository _userStates;
     private readonly IConversationThreadRepository _threads;
     private readonly IConversationMessageRepository _messages;
+    private readonly IBanRepository _bans;
 
     public ConversationService(
         IClock clock,
@@ -23,7 +25,8 @@ public sealed class ConversationService
         IPickupRepository pickups,
         IUserStateRepository userStates,
         IConversationThreadRepository threads,
-        IConversationMessageRepository messages)
+        IConversationMessageRepository messages,
+        IBanRepository bans)
     {
         _clock = clock;
         _bottles = bottles;
@@ -31,10 +34,21 @@ public sealed class ConversationService
         _userStates = userStates;
         _threads = threads;
         _messages = messages;
+        _bans = bans;
+    }
+    //封禁检查
+    private async Task EnsureNotBannedAsync(long userId, CancellationToken ct)
+    {
+        var now = _clock.UtcNow;
+        var until = await _bans.GetBannedUntilAsync(userId, ct);
+        if (until is { } u && u > now)
+            throw new InvalidOperationException($"你已被封禁，解封时间：{u:yyyy-MM-dd HH:mm} UTC");
     }
 
     public async Task StartFromBottleAsync(long userId, Guid bottleId, CancellationToken ct)
     {
+        //关键入口加拦截
+        await EnsureNotBannedAsync(userId, ct);
         var bottle = await _bottles.GetByIdAsync(bottleId, ct);
         if (bottle is null || bottle.IsDeleted)
             throw new InvalidOperationException("瓶子不存在或已删除。");
@@ -58,6 +72,8 @@ public sealed class ConversationService
 
     public async Task StartFromThreadAsync(long userId, Guid threadId, CancellationToken ct)
     {
+        //关键入口加拦截
+        await EnsureNotBannedAsync(userId, ct);
         var thread = await _threads.GetByIdAsync(threadId, ct);
         if (thread is null)
             throw new InvalidOperationException("会话不存在或已失效。");
@@ -140,6 +156,8 @@ public sealed class ConversationService
 
     public async Task<(long ToUserId, string BottleNo, string Content, Guid ThreadId)> CommitSendAsync(long userId, CancellationToken ct)
     {
+        //关键入口加拦截
+        await EnsureNotBannedAsync(userId, ct);
         // Commit 阶段再次读取一遍 state/thread/content，确保使用“提交时刻”的草稿内容。
         // （避免 Peek 后用户又追加了内容，造成发送内容不一致；同时也标准化接口，不传 expectedContent。）
         var state = await _userStates.GetAsync(userId, ct);

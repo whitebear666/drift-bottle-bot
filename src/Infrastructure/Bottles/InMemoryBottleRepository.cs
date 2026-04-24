@@ -66,4 +66,22 @@ public sealed class InMemoryBottleRepository : IBottleRepository
 
         return Task.FromResult<IReadOnlyList<Bottle>>(list);
     }
+    //包括已过期/已删除历史也视为全量清除范围：这里会把所有该作者瓶子都 set 为 deleted（即使之前已经 deleted 也会再写一遍 deletedAt）
+    public Task<int> DeleteAllByAuthorAsync(long authorUserId, DateTimeOffset deletedAtUtc, CancellationToken ct)
+    {
+        var count = 0;
+        foreach (var b in _byId.Values)
+        {
+            if (b.AuthorUserId != authorUserId) continue;
+
+            if (!b.IsDeleted)
+                count++;
+
+            b.IsDeleted = true;
+            b.DeletedAt = deletedAtUtc;
+        }
+
+        return Task.FromResult(count);
+    }
+
 }

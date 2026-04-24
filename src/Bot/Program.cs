@@ -10,6 +10,9 @@ using Microsoft.Extensions.Configuration;
 using Application.Conversations.Contracts;
 using Infrastructure.Conversations;
 using Application.Conversations;
+using Application.Risk;
+using Application.Risk.Contracts;
+using Infrastructure.Risk;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -19,6 +22,11 @@ builder.Configuration.AddUserSecrets<Worker>(optional: true);
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<BottleService>();
 builder.Services.AddSingleton<ConversationService>();
+builder.Services.AddSingleton<ModerationService>();
+
+builder.Services.AddSingleton<IReportRepository, InMemoryReportRepository>();
+builder.Services.AddSingleton<IUserBlockRepository, InMemoryUserBlockRepository>();
+builder.Services.AddSingleton<IBanRepository, InMemoryBanRepository>();
 
 // Infrastructure (InMemory)
 builder.Services.AddSingleton<IBottleRepository, InMemoryBottleRepository>();

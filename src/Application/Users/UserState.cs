@@ -21,4 +21,7 @@ public sealed class UserState
 
     //这个是拉黑后的操作，严格来说是将只拉黑“这一条会话 thread”（同一个人换新 thread 还能发）
     public HashSet<Guid> BlockedThreadIds { get; set; } = new();
+
+    //说明：这是真正“当前用户拉黑了哪些作者”的列表；用于捞瓶过滤、也可以用于以后做“管理员解封/用户列表展示”。
+    public HashSet<long> BlockedUserIds { get; set; } = new();
 }
